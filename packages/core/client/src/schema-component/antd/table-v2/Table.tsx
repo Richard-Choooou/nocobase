@@ -18,16 +18,17 @@ import { action } from '@formily/reactive';
 import { uid } from '@formily/shared';
 import { isPortalInBody } from '@nocobase/utils/client';
 import { useCreation, useDeepCompareEffect, useMemoizedFn } from 'ahooks';
-import { Table as AntdTable, Skeleton, TableColumnProps } from 'antd';
+import { Table as AntdTable, Button, Modal, Skeleton, TableColumnGroupType, TableColumnProps } from 'antd';
 import { default as classNames, default as cls } from 'classnames';
 import _, { omit } from 'lodash';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useInView } from 'react-intersection-observer';
-import { DndContext, useDesignable, useTableSize } from '../..';
+import { createDesignable, DndContext, useDesignable, useTableSize } from '../..';
 import {
   RecordIndexProvider,
   RecordProvider,
+  useAPIClient,
   useCollection,
   useCollectionParentRecordData,
   useSchemaInitializerRender,
@@ -42,6 +43,8 @@ import { useToken } from '../__builtins__';
 import { SubFormProvider } from '../association-field/hooks';
 import { ColumnFieldProvider } from './components/ColumnFieldProvider';
 import { extractIndex, isCollectionFieldComponent, isColumnComponent } from './utils';
+import { Input } from 'antd';
+import { AddGroup, TableColumnGroup } from './Table.ColumnGroup';
 const MemoizedAntdTable = React.memo(AntdTable);
 
 const useArrayField = (props) => {
@@ -109,69 +112,113 @@ const useTableColumns = (props: { showDel?: boolean; isSubTable?: boolean }) => 
 
   const collection = useCollection();
 
+  const genTitleChildren = (s: Schema, fixed: string) => {
+    return s.reduceProperties((buffer, subField) => {
+      if (subField['x-component'] === 'TableV2.ColumnGroup') {
+        buffer.push( {
+          title: <RecursionField name={subField.name} schema={subField} onlyRenderSelf />,
+          children: genTitleChildren(subField, fixed),
+          fixed: fixed,
+          width: s['x-component-props']?.width || 200
+        })
+      } else {
+        if (fixed) {
+          subField['x-component-props'] = subField['x-component-props'] || {}
+          subField['x-component-props'].fixed = fixed
+        }
+        buffer.push(genFieldColumn(subField))
+      }
+
+      return buffer
+    }, [])
+  }
+
+  const genFieldColumn = (s) => {
+    const collectionFields = s.reduceProperties((buf, s) => {
+      if (isCollectionFieldComponent(s)) {
+        return buf.concat([s]);
+      }
+    }, []);
+    const dataIndex = collectionFields?.length > 0 ? collectionFields[0].name : s.name;
+    return {
+      title: <RecursionField name={s.name} schema={s} onlyRenderSelf />,
+      dataIndex,
+      key: s.name,
+      sorter: s['x-component-props']?.['sorter'],
+      width: s['x-component-props']?.width || 200,
+      ...s['x-component-props'],
+      render: (v, record) => {
+        // 这行代码会导致这里的测试不通过：packages/core/client/src/modules/blocks/data-blocks/table/__e2e__/schemaInitializer.test.ts:189
+        // if (collectionFields?.length === 1 && collectionFields[0]['x-read-pretty'] && v == undefined) return null;
+
+        const index = field.value?.indexOf(record);
+        const basePath = field.address.concat(record.__index || index);
+        return (
+          <SubFormProvider value={{ value: record, collection }}>
+            <RecordIndexProvider index={record.__index || index}>
+              <RecordProvider isNew={isNewRecord(record)} record={record} parent={parentRecordData}>
+                <ColumnFieldProvider schema={s} basePath={basePath}>
+                  <span role="button" className={schemaToolbarBigger}>
+                    <RecursionField basePath={basePath} schema={s} onlyRenderProperties />
+                  </span>
+                </ColumnFieldProvider>
+              </RecordProvider>
+            </RecordIndexProvider>
+          </SubFormProvider>
+        );
+      },
+      onCell: (record) => {
+        return { record, schema: s };
+      },
+    } as TableColumnProps<any>
+  }
+
   const columns = useMemo(
     () =>
       columnsSchema?.map((s: Schema) => {
-        const collectionFields = s.reduceProperties((buf, s) => {
-          if (isCollectionFieldComponent(s)) {
-            return buf.concat([s]);
-          }
-        }, []);
-        const dataIndex = collectionFields?.length > 0 ? collectionFields[0].name : s.name;
-        return {
-          title: <RecursionField name={s.name} schema={s} onlyRenderSelf />,
-          dataIndex,
-          key: s.name,
-          sorter: s['x-component-props']?.['sorter'],
-          width: 200,
-          ...s['x-component-props'],
-          render: (v, record) => {
-            // 这行代码会导致这里的测试不通过：packages/core/client/src/modules/blocks/data-blocks/table/__e2e__/schemaInitializer.test.ts:189
-            // if (collectionFields?.length === 1 && collectionFields[0]['x-read-pretty'] && v == undefined) return null;
 
-            const index = field.value?.indexOf(record);
-            const basePath = field.address.concat(record.__index || index);
-            return (
-              <SubFormProvider value={{ value: record, collection }}>
-                <RecordIndexProvider index={record.__index || index}>
-                  <RecordProvider isNew={isNewRecord(record)} record={record} parent={parentRecordData}>
-                    <ColumnFieldProvider schema={s} basePath={basePath}>
-                      <span role="button" className={schemaToolbarBigger}>
-                        <RecursionField basePath={basePath} schema={s} onlyRenderProperties />
-                      </span>
-                    </ColumnFieldProvider>
-                  </RecordProvider>
-                </RecordIndexProvider>
-              </SubFormProvider>
-            );
-          },
-          onCell: (record) => {
-            return { record, schema: s };
-          },
-        } as TableColumnProps<any>;
+        if (s['x-component'] === 'TableV2.ColumnGroup') {
+          const children = genTitleChildren(s, s['x-component-props']['fixed'] || undefined)
+          return {
+            title: <RecursionField name={s.name} schema={s} onlyRenderSelf />,
+            // title: <TableColumnGroup title={s['x-component-props'].title}></TableColumnGroup>,
+            // width: '300px',
+            fixed: s['x-component-props']['fixed'] || undefined,
+            children: children.length > 0 ? children : []
+          }
+        }
+        return genFieldColumn(s);
       }),
 
     // 这里不能把 columnsSchema 作为依赖，因为其每次都会变化，这里使用 hasChangedColumns 作为依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasChangedColumns, field.value, field.address, collection, parentRecordData, schemaToolbarBigger],
+    [hasChangedColumns, field.value, field.address, collection, parentRecordData, schemaToolbarBigger, designable],
   );
 
   const tableColumns = useMemo(() => {
     if (!exists) {
       return columns;
     }
-    const res = [
-      ...columns,
-      {
-        title: render(),
+    let res = [
+      ...columns
+    ];
+
+    if (designable) {
+      res = res.concat([{
+        title: designable ? () => {
+          return <div style={{display: 'flex', alignItems: 'center'}}>
+            {designable && <AddGroup />}
+            {render()}
+          </div>
+        } : render(),
         dataIndex: 'TABLE_COLUMN_INITIALIZER',
         key: 'TABLE_COLUMN_INITIALIZER',
         render: designable
           ? () => <div style={{ width: '100%', minWidth: '180px' }} className="nb-column-initializer" />
           : null,
         fixed: designable ? 'right' : 'none',
-      },
-    ];
+      }])
+    }
 
     if (props.showDel) {
       res.push({
@@ -398,8 +445,48 @@ const rowSelectCheckboxCheckedClassHover = css`
 `;
 
 const HeaderWrapperComponent = (props) => {
+  const { refresh } = useDesignable();
+  const api = useAPIClient();
+  const { t } = useTranslation();
+
   return (
-    <DndContext>
+    <DndContext onDragEnd={(event) => {
+      const { active, over } = event;
+      const activeSchema = active?.data?.current?.schema;
+      const overSchema = over?.data?.current?.schema;
+      const insertAdjacent = over?.data?.current?.insertAdjacent;
+      const breakRemoveOn = over?.data?.current?.breakRemoveOn;
+      const wrapSchema = over?.data?.current?.wrapSchema;
+      const onSuccess = over?.data?.current?.onSuccess;
+      const removeParentsIfNoChildren = over?.data?.current?.removeParentsIfNoChildren ?? true;
+
+      const dn = createDesignable({
+        t,
+        api,
+        refresh,
+        current: overSchema,
+      });
+
+      dn.loadAPIClientEvents();
+
+      if (activeSchema.parent === overSchema.parent) {
+        if (overSchema['x-component'] === 'TableV2.ColumnGroup') {
+          dn.insertAdjacent('beforeEnd', activeSchema, {
+            removeParentsIfNoChildren: false
+          })
+          return true;
+        }
+      }
+
+      if (insertAdjacent) {
+        if (overSchema['x-component'] === 'TableV2.ColumnGroup') {
+          dn.insertAdjacent('beforeEnd', activeSchema, {
+            removeParentsIfNoChildren: false
+          });
+          return true;
+        }
+      }
+    }}>
       <thead {...props} />
     </DndContext>
   );
@@ -770,8 +857,10 @@ export const Table: any = withDynamicSchemaProps(
             rowKey={rowKey ?? defaultRowKey}
             dataSource={dataSource}
             tableLayout="auto"
+
             {...others}
             {...restProps}
+            bordered
             loading={loading}
             pagination={paginationProps}
             components={components}

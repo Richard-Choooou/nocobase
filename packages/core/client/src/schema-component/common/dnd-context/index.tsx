@@ -44,7 +44,6 @@ const useDragEnd = (onDragEnd) => {
         onDragEnd?.(event);
         return;
       }
-
       const dn = createDesignable({
         t,
         api,
@@ -55,19 +54,25 @@ const useDragEnd = (onDragEnd) => {
       dn.loadAPIClientEvents();
 
       if (activeSchema.parent === overSchema.parent) {
+        if (onDragEnd?.(event)) {
+          return
+        }
         dn.insertBeforeBeginOrAfterEnd(activeSchema);
-        onDragEnd?.(event);
+        // onDragEnd?.(event);
         return;
       }
 
       if (insertAdjacent) {
+        if (onDragEnd?.(event)) {
+          return
+        }
         dn.insertAdjacent(insertAdjacent, activeSchema, {
           wrap: wrapSchema,
           breakRemoveOn,
           removeParentsIfNoChildren,
           onSuccess,
         });
-        onDragEnd?.(event);
+        // onDragEnd?.(event);
         return;
       }
     },

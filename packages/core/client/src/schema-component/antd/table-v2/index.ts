@@ -13,6 +13,7 @@ import { TableColumn } from './Table.Column';
 import { TableColumnActionBar } from './Table.Column.ActionBar';
 import { TableColumnDecorator } from './Table.Column.Decorator';
 import { TableColumnDesigner } from './Table.Column.Designer';
+import { TableColumnGroup } from './Table.ColumnGroup';
 import { TableIndex } from './Table.Index';
 import { TableSelector } from './TableSelector';
 
@@ -24,6 +25,8 @@ export { useColumnSchema } from './Table.Column.Decorator';
 export const TableV2 = Table;
 
 TableV2.Column = TableColumn;
+TableV2.ColumnGroup = TableColumnGroup;
+TableV2.ColumnGroup.Designer = TableColumnDesigner;
 TableV2.Column.ActionBar = TableColumnActionBar;
 TableV2.Column.Decorator = TableColumnDecorator;
 TableV2.Column.Designer = TableColumnDesigner;

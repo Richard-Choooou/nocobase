@@ -55,7 +55,8 @@
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/ban-ts-comment": "off",
     "@typescript-eslint/no-var-requires": "off",
-    "promise/always-return": "off"
+    "promise/always-return": "off",
+    "prettier/prettier": "off"
   },
   "overrides": [
     {
